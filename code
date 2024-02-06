@@ -1,0 +1,653 @@
+' VARIABLES '
+ 
+Dim curPath
+Dim DbPath
+Dim managmentPay As Integer
+Dim examplePath
+Dim city
+Dim employeeName As String
+Dim employeeLastname As String
+Dim employeeBrutton As Double
+Dim employeeCash As Double
+Dim payItaxi As Double
+Dim zonesPayment As Double
+Dim cancelPaymnet As Double
+Dim abonament As Double
+Dim depositRooster As Double
+Dim employeeSalary As Double
+Dim tax As Double
+Dim wsSumup As Worksheet
+Dim wsGdansk As Worksheet
+Dim dbName As String
+Dim Filename As String
+Dim iTaxiNetto As Double
+Dim managmentPayment As String
+Dim terminal As String
+ 
+Dim terminalPay As Double
+Dim period As String
+ 
+Dim fieldDriverApplication  As String
+Dim applicationCost As Double
+Dim cashRegister As Double
+ 
+Dim costCar As Double
+ 
+Dim freeNowApplication As Double
+Dim iTaxiApplication As Double
+ 
+ 
+Dim contractNumber As String
+Dim employeeEmail As String
+Dim wbEmployee As Object
+Dim wbItaxi As Object
+Dim wbWeekly As Object
+Dim wsEmployee As Worksheet
+Dim wsItaxi As Worksheet
+Dim wsWeekly As Worksheet
+Dim wsDriver As Worksheet
+Dim wbSumup As Object
+ 
+Dim contractType As Integer
+ 
+Dim sumupNetto As Double
+Dim sumupBrutto As Double
+Dim sumupApplication As Double
+Dim sumupCash As Double
+Dim sumupSalaryBrutto As Double
+Dim sumupSalaryNetto As Double
+Dim sumupTax As Double
+Dim counterDayPreviousMonth As Integer
+Public WeeklyReport As Boolean
+Dim employeePhone As String
+ 
+ 
+' RUN '
+Sub openwb()
+ 
+Dialog.Show
+ 
+    curPath = ActiveWorkbook.Path
+    Application.Calculate
+ 
+    ActiveWorkbook.RefreshAll
+Application.CalculateUntilAsyncQueriesDone
+ 
+    Dim wbTemplate As Workbook
+    Dim wbReport As Workbook
+    Dim wbWeekly As Workbook
+    Set wbReport = ThisWorkbook
+    Dim fd As Office.FileDialog
+    Dim strFile As String
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    With fd
+        .Filters.clear
+        .Filters.Add "Excel Files", "*.xls*", 1
+        .Title = "WYBIERZ ZESTAWIENIE ITAXI"
+        .AllowMultiSelect = False
+ 
+        .InitialFileName = "C:\"
+ 
+        If .Show = True Then
+ 
+            strFile = .SelectedItems(1)
+ 
+        End If
+ 
+    End With
+    If strFile <> "" Then
+        Workbooks.Open (strFile)
+    End If
+ 
+    Set wbItaxi = Workbooks.Item(2)
+    Call openSumup
+    Call openSheetsAndTakeEmployeeDataFromSheets
+End Sub
+ 
+ 
+ 
+ 
+Sub openSheetsAndTakeEmployeeDataFromSheets()
+Dim deb As String
+ 
+examplePath = curPath & "/example"
+Set wbEmployee = Workbooks.Item(1)
+Set wsEmployee = wbEmployee.Sheets("employeeDB")
+Set wbItaxi = Workbooks.Item(2)
+Set wsItaxi = wbItaxi.Sheets("Arkusz1")
+Set wsSumup = wbSumup.Sheets("Worksheet1")
+ 
+Workbooks.Open (examplePath)
+ 
+Set wbWeekly = Workbooks.Item(4)
+Set wsWeekly = wbWeekly.Sheets("ITAXI")
+Call CountDaysPreviousMonth
+ 
+wsEmployee.Activate
+'wyciaganie danych z BAZY KLIENTOW sciaganej z GoogleSheets do while po wszystkich kierowcach
+    Dim row As Integer
+    row = 2
+    Do While wsEmployee.Cells(row, 1).value <> ""
+ 
+        contractNumber = wsEmployee.Cells(row, 14).value
+        dbName = wsEmployee.Cells(row, 1).value
+        period = wsEmployee.Cells(row, 16).value
+        fieldDriverApplication = wsEmployee.Cells(row, 19).value
+        costCar = wsEmployee.Cells(row, 25).value
+        city = wsEmployee.Cells(row, 15).value
+        employeeEmail = wsEmployee.Cells(row, 13).value
+        employeeEmail = Trim(employeeEmail)
+        terminal = UCase(wsEmployee.Cells(row, 22).value)
+        managmentPayment = UCase(wsEmployee.Cells(row, 20).value)
+        employeePhone = wsEmployee.Cells(row, 26).value
+        If WeeklyReport = False And period Like "*Tyd*" Then GoTo NextDriver
+        If WeeklyReport = True And period Like "*Mie*" Then GoTo NextDriver
+        
+ 
+        Call switcherConstractType(wsEmployee.Cells(row, 3).value)
+        Call copyExampleSheetToEmployeeSheet(row)
+ 
+        Call calculateDriverCost(contractType)
+        Call getDataFromItaxi(contractNumber, employeePhone)
+        Call getDataFromSumup(employeeEmail)
+        Call conditions
+ 
+       If WeeklyReport = False Then GoTo skipdb
+        Call updateVatTaxSheet(Filename, tax)
+skipdb:
+        Call copyAndSave
+NextDriver:
+        Call clearVariables
+        row = row + 1
+ 
+    Loop
+End Sub
+ 
+Sub getDataFromItaxi(contractId As String, phoneNumber As String)
+Dim phoneRow As Integer
+Dim phonedone As Boolean
+phonedone = False
+phoneRow = 4
+wsItaxi.Activate
+Do While wsItaxi.Cells(phoneRow, 2).value <> ""
+If wsItaxi.Cells(phoneRow, 2).value = employeePhone Then GoTo getDataFromItaxiByPhone
+phoneRow = phoneRow + 1
+Loop
+
+      
+ If phonedone = False Then
+Dim contractExist
+Dim convertedContract As Double
+If contractId <> "" Then
+    If contractId Like "*ID*" Then GoTo ID
+If contractId Like "*107X00000AS0*" Then GoTo ID
+    If contractId <> "zakończona współpraca" Then
+    convertedContract = CDbl(contractId)
+    End If
+        Else
+ID:
+        convertedContract = 0
+End If
+contractExist = Application.Match(convertedContract, wsItaxi.Range("A2:A999"), 0)
+If Not IsError(contractExist) Then
+        wsItaxi.Activate
+'pobieranie danych z zestawienia iTaxi
+      employeeName = WorksheetFunction.Index(Range("C2:C9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      employeeLastname = WorksheetFunction.Index(Range("D2:D9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      employeeBrutto = WorksheetFunction.Index(Range("E2:E9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      employeeCash = WorksheetFunction.Index(Range("F2:F9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      payItaxi = WorksheetFunction.Index(Range("G2:G9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      zonesPayment = WorksheetFunction.Index(Range("H2:H9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      cancelPayment = WorksheetFunction.Index(Range("I2:I9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      abonament = WorksheetFunction.Index(Range("L2:L9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+      depositRooster = WorksheetFunction.Index(Range("M2:M9999"), WorksheetFunction.Match(convertedContract, Range("A2:A9999"), 0))
+    End If
+    End If
+    If phonedone = True Then
+getDataFromItaxiByPhone:
+phonedone = True
+ employeeName = wsItaxi.Cells(phoneRow, 3).value
+      employeeLastname = wsItaxi.Cells(phoneRow, 4).value
+      employeeBrutto = wsItaxi.Cells(phoneRow, 5).value
+      employeeCash = wsItaxi.Cells(phoneRow, 6).value
+      payItaxi = wsItaxi.Cells(phoneRow, 7).value
+      zonesPayment = wsItaxi.Cells(phoneRow, 8).value
+      cancelPayment = wsItaxi.Cells(phoneRow, 9).value
+      abonament = wsItaxi.Cells(phoneRow, 12).value
+      depositRooster = wsItaxi.Cells(phoneRow, 13).value
+      End If
+         wsDriver.Activate
+        Call insertDataFromItaxi(Filename, employeeBrutto, employeeCash, payItaxi, zonesPayment, cancelPayment, abonament, depositRooster)
+ 
+End Sub
+Sub insertDataFromItaxi(name, brutto, cash, itaxi, zones, cancel, abo, rooster)
+'sprawdzenie czy oplaty kierowcow sa na minus
+If (zones > 0) Then zones = zones * -1
+If (cancel > 0) Then cancel = cancel * -1
+If (abo > 0) Then abo = abo * -1
+If (rooster > 0) Then rooster = rooster * -1
+ 
+'Wpisywanie danych z iTaxi
+ActiveSheet.Range("A32").value = name
+ActiveSheet.Range("E4").value = brutto
+ActiveSheet.Range("G4").value = cash
+ActiveSheet.Range("F4").value = itaxi
+ActiveSheet.Range("C12").value = zones
+ActiveSheet.Range("C13").value = cancel
+ActiveSheet.Range("C14").value = abo
+ActiveSheet.Range("C15").value = rooster
+iTaxiNetto = brutto / 1.08
+iTaxiNetto = Round(iTaxiNetto, 2)
+ActiveSheet.Range("D4").value = iTaxiNetto
+ 
+employeeSalary = brutto + cash + itaxi
+ActiveSheet.Range("I4").value = employeeSalary
+ActiveSheet.Range("H4").value = employeeSalary / 1.08
+tax = Round(employeeSalary - (employeeSalary / 1.08), 2)
+ActiveSheet.Range("J4").value = tax
+ 
+If employeeSalary < 0 Then
+ActiveSheet.Range("I4").value = 0
+ActiveSheet.Range("H4").value = employeeSalary
+ActiveSheet.Range("J4").value = 0
+End If
+ 
+ 
+'koszty kierowcy
+ActiveSheet.Range("C4").value = iTaxiApplication
+ActiveSheet.Range("C5").value = freeNowApplication
+ActiveSheet.Range("C22").value = cashRegister
+ActiveSheet.Range("C16").value = costCar
+ActiveSheet.Range("C19").value = terminalPay
+End Sub
+ 
+ 
+Sub calculateDriverCost(contract)
+    freeNowApplication = 0
+    iTaxiApplication = 0
+    cashRegister = 0
+    'sprawdzenie okresu i dzialanie tylko dla rozliczenia tygodniowego
+    If period Like "*Mie*" Then
+        Select Case contract
+        Case 1
+            If fieldDriverApplication Like "*iTaxi*Free*" Or fieldDriverApplication Like "*Free*iTaxi*" Then
+                freeNowApplication = -61.5
+                iTaxiApplication = -61.5
+            ElseIf fieldDriverApplication Like "Fre*" Then
+            freeNowApplication = -123
+            Else
+                iTaxiApplication = -123
+            End If
+        Case 2
+            iTaxiApplication = -184.5
+        Case 3, 4
+            cashRegister = -10.55 * counterDayPreviousMonth
+            If fieldDriverApplication Like "*iTaxi*Free*" Then
+                iTaxiApplication = -61.5
+                freeNowApplication = -61.5
+            ElseIf fieldDriverApplication Like "Fre*" Then
+            freeNowApplication = -123
+            Else
+                iTaxiApplication = -123
+            End If
+        End Select
+        If (terminal = "TAK") Then terminalPay = -1.75 * counterDayPreviousMonth
+ 
+        If managmentPayment = "TAK" Then
+            managmentPay = -7.14 * counterDayPreviousMonth
+            Else
+            managmentPay = 0
+        End If
+ 
+End If
+ 
+If period Like "*Tyd*" Then
+        Select Case contract
+        Case 1
+            If fieldDriverApplication Like "*iTaxi*Free*" Then
+                freeNowApplication = -60.88
+                iTaxiApplication = -60.88
+            ElseIf fieldDriverApplication Like "Fre*" Then
+            freeNowApplication = -84.87
+            Else
+                iTaxiApplication = -84.87
+            End If
+        Case 2
+            iTaxiApplication = -61.5
+        Case 3, 4
+            cashRegister = -73.8
+            If fieldDriverApplication Like "*iTaxi*Free*" Then
+                iTaxiApplication = -36.9
+                freeNowApplication = -36.9
+            ElseIf fieldDriverApplication Like "Fre*" Then
+            freeNowApplication = -36.9
+            Else
+                iTaxiApplication = -36.9
+            End If
+        End Select
+        If (terminal = "TAK") Then terminalPay = -12.3
+            If city = "Gdańsk" Then
+                If managmentPayment = "TAK" Then
+                    managmentPay = -50
+                Else
+                    managmentPay = 0
+                End If
+            End If
+    End If
+    costCar = costCar * -1
+End Sub
+ 
+ 
+Sub clearVariables()
+'czyszczenie zmiennych
+brutto = 0
+cash = 0
+itaxi = 0
+zones = 0
+cancel = 0
+abo = 0
+rooster = 0
+iTaxiNetto = 0
+employeeSalary = 0
+ 
+iTaxiApplication = 0
+freeNowApplication = 0
+cashRegister = 0
+costCar = 0
+terminalPay = 0
+costCar = 0
+sumupNetto = 0
+sumupBrutto = 0
+sumupSalaryNetto = 0
+sumupSalaryBrutto = 0
+sumupTax = 0
+sumupApplication = 0
+employeeName = ""
+      employeeLastname = ""
+      employeeBrutto = 0
+      employeeCash = 0
+      payItaxi = 0
+      zonesPayment = 0
+      cancelPayment = 0
+      abonament = 0
+      depositRooster = 0
+End Sub
+ 
+ 
+ 
+Sub openSumup()
+ Dim fileDial As Office.FileDialog
+    Dim sumupFile As String
+    Set fileDial = Application.FileDialog(msoFileDialogFilePicker)
+    With fileDial
+        .Filters.clear
+        .Filters.Add "Excel Files", "*.xls*", 1
+        .Title = "WYBIERZ ZESTAWIENIE SUMUP"
+        .AllowMultiSelect = False
+ 
+        .InitialFileName = "C:\"
+ 
+        If .Show = True Then
+ 
+            sumupFile = .SelectedItems(1)
+ 
+        End If
+ 
+    End With
+    If sumupFile <> "" Then
+        Workbooks.Open (sumupFile)
+    End If
+ 
+    Dim pivot As String
+    pivot = "pivotTable"
+    Set wbSumup = Workbooks.Item(3)
+    lastrow = Range("B1").End(xlDown).row
+    Application.CutCopyMode = False
+    Sheets.Add
+    ActiveWorkbook.PivotCaches.Create(SourceType:=xlDatabase, SourceData:= _
+        "Worksheet1!R1C1:R" & lastrow & "C21", Version:=xlPivotTableVersion10).CreatePivotTable _
+        TableDestination:="Arkusz1!R3C1", TableName:=pivot, _
+        DefaultVersion:=xlPivotTableVersion10
+    Sheets("Arkusz1").Select
+    Cells(3, 1).Select
+    With ActiveSheet.PivotTables(pivot)
+        .ColumnGrand = True
+        .HasAutoFormat = True
+        .DisplayErrorString = False
+        .DisplayNullString = True
+        .EnableDrilldown = True
+        .ErrorString = ""
+        .MergeLabels = False
+        .NullString = ""
+        .PageFieldOrder = 2
+        .PageFieldWrapCount = 0
+        .PreserveFormatting = True
+        .RowGrand = True
+        .SaveData = True
+        .PrintTitles = False
+        .RepeatItemsOnEachPrintedPage = True
+        .TotalsAnnotation = False
+        .CompactRowIndent = 1
+        .InGridDropZones = True
+        .DisplayFieldCaptions = True
+ 
+        .DisplayContextTooltips = True
+        .ShowDrillIndicators = True
+        .PrintDrillIndicators = False
+ 
+        .SortUsingCustomLists = True
+        .FieldListSortAscending = False
+        .ShowValuesRow = True
+ 
+        .RowAxisLayout xlTabularRow
+    End With
+    With ActiveSheet.PivotTables(pivot).PivotCache
+        .RefreshOnFileOpen = False
+        .MissingItemsLimit = xlMissingItemsDefault
+    End With
+    ActiveSheet.PivotTables(pivot).RepeatAllLabels xlRepeatLabels
+    With ActiveSheet.PivotTables(pivot).PivotFields("E-mail")
+        .Orientation = xlRowField
+        .Position = 1
+    End With
+    With ActiveSheet.PivotTables(pivot).PivotFields("Status")
+        .Orientation = xlPageField
+        .Position = 1
+    End With
+    ActiveSheet.PivotTables(pivot).AddDataField ActiveSheet. _
+        PivotTables(pivot).PivotFields("Razem"), "Suma z Razem", xlSum
+    ActiveSheet.PivotTables(pivot).PivotFields("Status"). _
+        CurrentPage = "Potwierdzona"
+    Sheets("Arkusz1").Select
+    Sheets("Arkusz1").name = "sumupPivot"
+    Sheets.Add
+    Sheets("Arkusz2").Select
+    Sheets("Arkusz2").name = "pivotValues"
+   Worksheets("sumupPivot").PivotTables(pivot).TableRange2.Copy
+   With Worksheets("pivotValues").Range("A1")
+    .PasteSpecial Paste:=xlPasteValues
+   End With
+End Sub
+ 
+Sub getDataFromSumup(email)
+wbSumup.Activate
+Set wsSumup = Sheets("pivotValues")
+Dim tableRange As Integer
+tableRange = Range("A3").End(xlDown).row
+emailInSumup = Application.Match(email, wsSumup.Range("A2:A" & tableRange), 0)
+If Not IsError(emailInSumup) Then
+    sumupBrutto = WorksheetFunction.Index(Range("B2:B" & tableRange), WorksheetFunction.Match(email, Range("A2:A" & tableRange), 0))
+ 
+    End If
+Call sumupCalculations
+End Sub
+ 
+Sub sumupCalculations()
+sumupNetto = Round((sumupBrutto * 0.9851), 2)
+sumupApplication = Round((sumupBrutto * 0.0149), 2)
+sumupSalaryBrutto = Round(sumupBrutto, 2)
+sumupSalaryNetto = Round(sumupNetto, 2)
+sumupTax = Round((sumupSalaryBrutto - (sumupSalaryBrutto / 1.08)), 2)
+If city = "Warszawa" Then
+If contractNumber = "851573096879" Then
+sumupTax = Round((sumupSalaryBrutto - (sumupSalaryBrutto / 1.08)), 2)
+ElseIf contractNumber = "785719283774" Then
+sumupTax = Round((sumupSalaryBrutto - (sumupSalaryBrutto / 1.08)), 2)
+Else
+sumupTax = 0
+End If
+End If
+ 
+tax = tax + sumupTax
+Call sumupInsertData
+End Sub
+Sub sumupInsertData()
+ wsDriver.Activate
+ 
+ActiveSheet.Range("D6").value = sumupNetto
+ActiveSheet.Range("E6").value = sumupBrutto
+ActiveSheet.Range("F6").value = sumupApplication * -1
+ActiveSheet.Range("H6").value = sumupSalaryNetto
+ActiveSheet.Range("I6").value = sumupSalaryBrutto
+ 
+ActiveSheet.Range("J6").value = sumupTax
+ 
+End Sub
+Sub switcherConstractType(switchType As String)
+Select Case switchType
+        ' rodzaje umow przepisane na integer do latwiejszej obslugi niz stringi
+    Case "1.1"
+        contractType = 1
+    Case "1.2"
+        contractType = 2
+    Case "2.1"
+        contractType = 3
+    Case "2.2"
+        contractType = 4
+    End Select
+End Sub
+ 
+Sub copyExampleSheetToEmployeeSheet(rows)
+'kopiowanie przygotowanego wcześniej example i ustawianie nazwy takiej jak rozliczany kierowca
+Filename = wsEmployee.Range("A" & rows).value
+        wsWeekly.Copy Before:=Workbooks("example.xlsx").Sheets(1)
+        ActiveSheet.name = Left(Filename, 31)
+   Set wsDriver = wbWeekly.Sheets(Left(Filename, 31))
+End Sub
+ 
+Sub conditions()
+ wsDriver.Activate
+ 
+ ActiveSheet.Range("C24").value = managmentPay
+ ' wpisanie oplaty za terminal Sebastian Pietrzak
+If contractNumber = "186282083697" Then terminalPay = -12.3
+ 
+ 'Wpisanie wartości na plus za wypożyczenie auto (mykola)
+'If contractNumber = "724585733669" Then ActiveSheet.Range("C16").value = 750
+'TO DO  poznać contractID
+ 
+ 
+'Łukasz Lipiński nie pobieranie zaliczki na poczet VAT
+If name = "Łukasz Lipiński" Then
+ActiveSheet.Range("J4").value = 0
+ActiveSheet.Range("J6").value = 0
+ 
+End If
+ 
+'wpisanie formuły na Olsztyn do odliczania zaliczki na VAT z Sumup
+If city = "Olsztyn" Then
+    wsDriver.Range("J6").FormulaLocal = "=I6-(I6/1,08)"
+    wsDriver.Range("H26").FormulaLocal = "=SUMA(H4:H6)-J6"
+    ElseIf city = "Gdańsk" Then
+    wsDriver.Range("J6").FormulaLocal = "=I6-(I6/1,08)"
+    wsDriver.Range("H26").FormulaLocal = "=SUMA(H4:H6)-J6"
+End If
+ 
+'wpisanie formuły tak jak za Olsztyn (valeri, vitaliy)
+If contractNumber = "785719283774" Then
+wsDriver.Range("J6").FormulaLocal = "=I6-(I6/1,08)"
+wsDriver.Range("H26").FormulaLocal = "=SUMA(H4:H6)-J6"
+End If
+If contractNumber = "851573096879" Then
+wsDriver.Range("J6").FormulaLocal = "=I6-(I6/1,08)"
+wsDriver.Range("H26").FormulaLocal = "=SUMA(H4:H6)-J6"
+End If
+'nie pobieranie zaliczki na podatek w Warszawie
+End Sub
+ 
+Sub copyAndSave()
+wbWeekly.Activate
+ActiveSheet.Copy
+        dtToday = Date
+        fName = dtToday & Filename & ".xlsx"
+        ActiveWorkbook.SaveAs Filename:=fName, FileFormat:=51
+ 
+        ActiveWorkbook.Close  'close it and return to original workbook
+End Sub
+ 
+Sub updateVatTaxSheet(employee As String, vat As Double)
+ 
+    Dim row As Integer
+    Dim i As Integer
+    DbPath = curPath & "\DriversDB"
+    Workbooks.Open (DbPath)
+    Dim wbDB As Workbook
+    Set wbDB = Workbooks.Item(5)
+    Dim wsDrivers As Worksheet
+    Set wsDrivers = wbDB.Sheets("Drivers")
+    row = 3
+    i = 3
+    ' column is a week number from today date
+    col = 52
+ 
+    'search employee in DB
+    Do While wsDrivers.Cells(i, 1).value <> ""
+        If wsDrivers.Cells(i, 1).value = employee Then GoTo good
+        i = i + 1
+    Loop
+    wsDrivers.Cells(i, 1).value = employee
+    'employee search in row by parameters from template
+good:
+    Do While wsDrivers.Cells(row, 1).value <> employee
+ 
+        row = row + 1
+        If wsDrivers.Cells(row, 1).value = "" Then GoTo Ending
+    Loop
+    If wsDrivers.Cells(row, 1).value = employee Then
+        If wsDrivers.Cells(row, col + 1).value = "" Then GoTo Insert Else GoTo Busy
+ 
+Insert:
+        If vat >= 0 Then
+            wsDrivers.Cells(row, col + 1).value = vat
+            Else
+            wsDrivers.Cells(row, col + 1).value = 0
+        End If
+        GoTo Ending
+Busy:
+ 
+Ending:
+    End If
+ 
+    ActiveWorkbook.Save
+    ActiveWorkbook.Close
+End Sub
+ 
+Sub CountDaysPreviousMonth()
+ 
+    Dim firstDayCurrentMonth As Date
+    Dim lastDayPreviousMonth As Date
+    Dim countDays As Integer
+ 
+    ' Pobierz pierwszy dzień bieżącego miesiąca
+    firstDayCurrentMonth = DateSerial(Year(Date), Month(Date), 1)
+ 
+    ' Odejmij jeden dzień od pierwszego dnia bieżącego miesiąca, aby uzyskać ostatni dzień poprzedniego miesiąca
+    lastDayPreviousMonth = firstDayCurrentMonth - 1
+ 
+    ' Oblicz różnicę w dniach
+    countDays = Day(firstDateCurrentMonth - 1)
+ 
+    ' Zwróć wynik
+    counterDayPreviousMonth = countDays
+End Sub
+
